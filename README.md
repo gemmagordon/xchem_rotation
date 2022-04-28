@@ -12,11 +12,17 @@
 # 2. getting pharmacophore point cloud from sdf files
 - RDKit SDF supplier class? convert sdf file to rdkit mol object
 - toy code extract pharmacophore functions
-
+- get point cloud from ph4 coordinates
 
 # 3. generating conformers for query molecules
 - rdkit EmbedMultipleConfs, GetConformers()
 - some energy minimisation of conformers?
+- just use one conformer for now - sdf gives the experimental one and can extract coords with GetPositions()
+- need sets of query molecules with and without coords - set with coords as ground truth so we can see alignment performance
+- would assume that 
 
 # 4. alignment
+- brute force
+- ICP, RANSAC 
 # 5. evaluate performance
+- compare with coords (ground truth) to without coords - can find RMSD between these two?
