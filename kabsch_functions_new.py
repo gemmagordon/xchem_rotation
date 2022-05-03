@@ -161,3 +161,25 @@ def plot_to_compare(results_1, results_2, label_1, label_2, plot_name, file_name
     plt.close()
 
     return
+
+
+# from https://github.com/charnley/rmsd/blob/master/rmsd/calculate_rmsd.py 
+# NOTE should double-check this against https://en.wikipedia.org/wiki/Root-mean-square_deviation_of_atomic_positions
+
+def rmsd(V, W):
+    """
+    Calculate Root-mean-square deviation from two sets of vectors V and W.
+    Parameters
+    ----------
+    V : array
+        (N,D) matrix, where N is points and D is dimension.
+    W : array
+        (N,D) matrix, where N is points and D is dimension.
+    Returns
+    -------
+    rmsd : float
+        Root-mean-square deviation between the two vectors
+    """
+    diff = np.array(V) - np.array(W)
+    N = len(V)
+    return np.sqrt((diff * diff).sum() / N)
