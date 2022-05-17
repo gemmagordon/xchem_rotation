@@ -2,6 +2,31 @@ import numpy as np
 import matplotlib.pyplot as plt
 import shutil
 
+import scipy
+from scipy.spatial.transform import Rotation
+
+
+def align_coords(query_points, ref_points):
+    qm_means = query_points.mean(0)
+    rm_means = ref_points.mean(0)
+    qm_trans = query_points - qm_means
+    rm_trans = ref_points - rm_means
+
+    trans_vector = rm_means # add to revert_translation
+
+    #For more speed use scipy.spatial.transform.Rotation.align_vectors. You still need to deal with translation
+    # h = compute_covariance_matrix(rm_trans, qm_trans)
+    # r = compute_optimal_rotation_matrix(h)
+    # qm_rotated = apply_rotation(qm_trans, r)
+
+    rot_matrix, __ = Rotation.align_vectors(a=rm_trans, b=qm_trans)
+    rot_matrix = rot_matrix.as_matrix() # scipy gives Rotation object, get matrix
+    qm_rotated = qm_trans  @ rot_matrix
+
+    # qm_reverted, frm_reverted = revert_translation(qm_rotated, frm_trans, qm_means, frm_means)
+    qm_aligned =  qm_rotated + trans_vector
+    rmsd_val = rmsd(qm_aligned, rm_trans + trans_vector)
+    return qm_aligned, rmsd_val
 
 def translate_to_origin(matrix):
 
