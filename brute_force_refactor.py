@@ -37,6 +37,7 @@ query_mols = frag_mols
 
 # get ph4 coords for a single mol
 query_donor_coords, query_acceptor_coords, query_aromatic_coords = bf.get_coords_query(query_mols[0])
+print(np.concatenate([query_donor_coords, query_acceptor_coords]))
 
 # transform points for test
 query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans \
@@ -158,11 +159,10 @@ def filter_by_dist(query_points, pocket_df):
     cluster_labels = cluster(pocket_points, distance_threshold=max_query_dist) # order not lost ? so use just points in clustering, then append list of labels to existing df with ph4 labels
     pocket_df['cluster_label'] = pd.Series(cluster_labels) # NOTE should check this works ie stays in order/labels not wrong
 
-    return max_query_dist, pocket_df
+    return pocket_df
 
 
-max_query_dist, pocket_df = filter_by_dist(query_points, pocket_df)
-print(len(pocket_df))
+pocket_df = filter_by_dist(query_points, pocket_df)
 
 def generate_permutations(pocket_df):
 
@@ -209,8 +209,6 @@ def generate_permutations(pocket_df):
 ph4_permutations = generate_permutations(pocket_df)
 print('TOTAL PERMUTATIONS:', len(ph4_permutations))
 
-
-# NOTE but want to do this instead, exactly the same but running parallel
 
 # create df to hold results
 results_df = pd.DataFrame()
