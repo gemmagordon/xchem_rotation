@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 # coding: utf-8
 
-from concurrent.futures.process import _chain_from_iterable_of_lists
 import os
 from rdkit import Chem
 from geomtry_utils import transform_ph4s
@@ -37,7 +36,7 @@ frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, \
 query_mols = frag_mols
 
 # get ph4 coords for a single mol
-query_donor_coords, query_acceptor_coords, query_aromatic_coords = bf.get_coords_query(query_mols[1])
+query_donor_coords, query_acceptor_coords, query_aromatic_coords = bf.get_coords_query(query_mols[0])
 
 # transform points for test
 query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans \
@@ -115,12 +114,12 @@ acceptor_centroid_df = create_centroid_df(acceptor_df)
 # NOTE for test removing centroids at first to see if works with exact points; should be RMSD=0 
 donor_centroid_df = donor_df 
 acceptor_centroid_df = acceptor_df
-print('LEN DONOR DF', len(donor_centroid_df))
-print('LEN ACC DF', len(acceptor_centroid_df))
+print('check donor_df length', len(donor_centroid_df))
+print('check acc df length', len(acceptor_centroid_df))
 
 centroid_dfs = [donor_centroid_df, acceptor_centroid_df]
 
-# NOTE bug here loop wrong
+
 def create_pocket_df(centroid_dfs):
 
     labelled_dfs =[]
@@ -138,7 +137,7 @@ def create_pocket_df(centroid_dfs):
     return pocket_df
 
 pocket_df = create_pocket_df(centroid_dfs)
-print('POCKET DF LEN', len(pocket_df))
+print('check pocket_df length', len(pocket_df))
 print(pocket_df.columns)
 
 
