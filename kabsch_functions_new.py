@@ -28,6 +28,7 @@ def align_coords(query_points, ref_points):
     rmsd_val = rmsd(qm_aligned, rm_trans + trans_vector)
     return qm_aligned, rmsd_val
 
+
 def translate_to_origin(matrix):
 
     ''' Translate a matrix so that its centroid lies on the origin (0,0,0)
