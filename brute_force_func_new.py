@@ -98,19 +98,34 @@ def get_coords(mols):
     acceptor_idxs = []
     aromatic_idxs = []
 
+    donor_acceptor_coords = []
+    donor_acceptor_idxs = []
+
     for i, mol in enumerate(mols):
+
         # .get() will just fill with None if key doesn't exist
         pharma_coords, __ = getPharmacophoreCoords(mol)
-        donor_coord = pharma_coords.get('Donor')
-        acceptor_coord = pharma_coords.get('Acceptor')
+        _donor_coord = pharma_coords.get('Donor')
+        _acceptor_coord = pharma_coords.get('Acceptor')
         aromatic_coord = pharma_coords.get('Aromatic')
 
-        donor_coords.append(donor_coord)
-        acceptor_coords.append(acceptor_coord)
-        aromatic_coords.append(aromatic_coord)
+        if _donor_coord is not None and _acceptor_coord is not None:
+            # get common coords from donors and acceptors and add to donor-acceptor group
+            donor_acceptor_coord = [x for x in _donor_coord if x in _acceptor_coord] 
+
+            # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
+            donor_coord = [x for x in _donor_coord if x not in _acceptor_coord]
+            acceptor_coord = [x for x in _acceptor_coord if x not in _donor_coord]
+
+            donor_acceptor_coords = np.append(donor_acceptor_coords, donor_acceptor_coord.copy())
+            donor_coords = np.append(donor_coords, donor_coord.copy())
+            acceptor_coords = np.append(acceptor_coords, acceptor_coord.copy())
+            
+    donor_acceptor_coords = donor_acceptor_coords.reshape(-1,3)
+    donor_coords = donor_coords.reshape(-1,3)
+    acceptor_coords = acceptor_coords.reshape(-1,3)
 
     # remove None values
-
     _donor_coords = []
     for i, x in enumerate(donor_coords):
         if x is not None:
@@ -125,6 +140,13 @@ def get_coords(mols):
             acceptor_idxs += [i] * len(x)
     acceptor_coords = _acceptor_coords
 
+    _donor_acceptor_coords = []
+    for i, x in enumerate(donor_acceptor_coords):
+        if x is not None:
+            _donor_acceptor_coords.append( x )
+            donor_acceptor_idxs += [i] * len(x)
+    donor_acceptor_coords = _donor_acceptor_coords
+
     _aromatic_coords = []
     for i, x in enumerate(aromatic_coords):
         if x is not None:
@@ -132,18 +154,24 @@ def get_coords(mols):
             aromatic_idxs += [i] * len(x)
     aromatic_coords = _aromatic_coords
 
+
     if len(donor_coords) == 0:
         donor_coords = np.array(donor_coords).reshape(-1,3)
     else: 
         donor_coords = np.concatenate(donor_coords)
         donor_idxs = np.array(donor_idxs)
-
     
     if len(acceptor_coords) == 0:
         acceptor_coords = np.array(acceptor_coords).reshape(-1,3)
     else:
         acceptor_coords = np.concatenate(acceptor_coords)
         acceptor_idxs = np.array(acceptor_idxs)
+    
+    if len(donor_acceptor_coords) == 0:
+        donor_acceptor_coords = np.array(donor_acceptor_coords).reshape(-1,3)
+    else:
+        donor_acceptor_coords = np.concatenate(donor_acceptor_coords).reshape(-1,3) # NOTE keep reshape here
+        donor_acceptor_idxs = np.array(donor_acceptor_idxs)
 
     if len(aromatic_coords) == 0:
         aromatic_coords = np.array(aromatic_coords).reshape(-1,3)
@@ -151,20 +179,28 @@ def get_coords(mols):
         aromatic_coords = np.concatenate(aromatic_coords)
         aromatic_idxs = np.array(aromatic_idxs)
 
-    return donor_coords, acceptor_coords, aromatic_coords, (donor_idxs, acceptor_idxs, aromatic_idxs)
+    donor_acceptor_coords = donor_acceptor_coords.reshape(-1,3)
+    donor_coords = donor_coords.reshape(-1,3)
+    acceptor_coords = acceptor_coords.reshape(-1,3)
+
+    return donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords, (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs)
 
 
 def get_coords_query(mol):
 
-    donor_coords = []
-    acceptor_coords = []
-    aromatic_coords = []
-    
     # .get() will just fill with None if key doesn't exist
     pharma_coords, __ = getPharmacophoreCoords(mol)
-    donor_coords = pharma_coords.get('Donor')
-    acceptor_coords = pharma_coords.get('Acceptor')
+    _donor_coords = pharma_coords.get('Donor')
+    _acceptor_coords = pharma_coords.get('Acceptor')
     aromatic_coords = pharma_coords.get('Aromatic')
+
+    # get common coords from donors and acceptors and add to donor-acceptor group
+    if _donor_coords is not None and _acceptor_coords is not None:
+        donor_acceptor_coords = [i for i in _donor_coords if i in _acceptor_coords] 
+        donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
+        # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
+        donor_coords = [i for i in _donor_coords if i not in _acceptor_coords]
+        acceptor_coords = [i for i in _acceptor_coords if i not in _donor_coords]
 
     # remove None values
     if donor_coords is not None:
@@ -172,30 +208,39 @@ def get_coords_query(mol):
         donor_coords = np.concatenate([donor_coords])
     else:
         donor_coords = np.array([]).reshape(-1,3)
+    
     if acceptor_coords is not None:
         acceptor_coords = [x for x in acceptor_coords if x is not None]
         acceptor_coords = np.concatenate([acceptor_coords])
     else:
         acceptor_coords = np.array([]).reshape(-1, 3)
+    
+    if donor_acceptor_coords is not None:
+        donor_acceptor_coords = [x for x in donor_acceptor_coords if x is not None]
+        donor_acceptor_coords = np.concatenate([donor_acceptor_coords]).reshape(-1,3)
+    else:
+        donor_acceptor_coords = np.array([]).reshape(-1, 3)
+
     if aromatic_coords is not None:
         aromatic_coords = [x for x in aromatic_coords if x is not None]
         aromatic_coords = np.concatenate([aromatic_coords])
     else:
         aromatic_coords = np.array([]).reshape(-1, 3)
 
-    return donor_coords, acceptor_coords, aromatic_coords
+
+    return donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords
 
 
 # ### Setting up fragment point cloud
 
-def plot_coords(donor_coords, acceptor_coords, aromatic_coords):
+def plot_coords(donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords):
     
     fig = plt.figure(figsize=(10,10))
     ax = plt.axes(projection='3d')
 
     # visualize the 3D cloud of fragment pharmacophores. They are a good representation of the protein pocket.
-    labels = ['Donor', 'Acceptor', 'Aromatic']
-    for coords, label in zip([donor_coords, acceptor_coords, aromatic_coords], labels):
+    labels = ['Donor', 'Acceptor', 'Aromatic', 'Donor-Acceptor']
+    for coords, label in zip([donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords], labels):
         if len(coords) != 0:
             ax.scatter3D(coords[:,0], coords[:,1], coords[:,2], label=label)
 
@@ -214,6 +259,18 @@ def cluster(data, distance_threshold):
     print('Cluster for each point: ', model.labels_)
 
     return labels
+
+
+def create_ph4_df(ph4_coords):
+    '''cluster ph4 coords and add to df with labels for which cluster each point is in'''
+    # cluster donor coords and add with labels to df
+    labels = cluster(ph4_coords, distance_threshold=1)
+    ph4_df = pd.DataFrame([ph4_coords[:,0], ph4_coords[:,1], ph4_coords[:,2], labels])
+    ph4_df = ph4_df.transpose()
+    ph4_df.columns = ['x', 'y', 'z', 'cluster_label']
+
+    return ph4_df
+
 
 def get_centroids(ph4_df):
 
@@ -241,15 +298,21 @@ def create_centroid_df(ph4_df):
     return centroid_df
 
 
-def create_pocket_df(centroid_dfs, ph4_labels):
+def create_pocket_df(centroid_dfs):
 
-    for centroid_df, ph4_label in zip(centroid_dfs, ph4_labels):
-        for row in centroid_df.iterrows():
-            centroid_df['ph4_label'] = str(ph4_label)
+    labelled_dfs =[]
 
-        centroid_dfs.append(centroid_df)
+    for centroid_df in centroid_dfs:
+        if centroid_df is donor_centroid_df:
+            centroid_df['ph4_label'] = 'Donor'
+        elif centroid_df is acceptor_centroid_df:
+            centroid_df['ph4_label'] = 'Acceptor'
+        elif centroid_df is donor_acceptor_centroid_df:
+            centroid_df['ph4_label'] = 'Donor-Acceptor'
 
-    pocket_df = pd.concat(centroid_dfs, axis=0)
+        labelled_dfs.append(centroid_df)
+
+    pocket_df = pd.concat(labelled_dfs, axis=0)
     
     return pocket_df
 
@@ -277,43 +340,50 @@ def filter_by_dist(query_points, pocket_df):
 
 def generate_permutations(pocket_df):
 
-        '''resort points in clusters back into their ph4 types (label them) then generate permutations'''
-        # sort back into ph4 types within main clusters (subpockets)
+    '''resort points in clusters back into their ph4 types (label them) then generate permutations'''
+    # sort back into ph4 types within main clusters (subpockets)
 
-        ph4_permutations = []
+    ph4_permutations = []
 
-        cluster_groups =  pocket_df.groupby('cluster_label')
-        for name, group in cluster_groups:
-            # need to separate back into ph4 types
-            # group within clusters by ph4 type
-            ph4_types = group.groupby('ph4_label')
-            # get arrays of point coords from each ph4 type
-            donors = []
-            acceptors = []
-            for name, group in ph4_types:
-                print(name, len(group))  # checked - gives totals of acceptors/donors expected
-                for x,y,z in zip(group['x'], group['y'], group['z']):
-                    coords = [x,y,z]
-                    if name == 'Donor':
-                        donors.append(coords)
-                    elif name == 'Acceptor':
-                        acceptors.append(coords)
+    cluster_groups =  pocket_df.groupby('cluster_label')
+    for name, group in cluster_groups:
+        # need to separate back into ph4 types
+        # group within clusters by ph4 type
+        ph4_types = group.groupby('ph4_label')
+        # get arrays of point coords from each ph4 type
+        donors = []
+        acceptors = []
+        donor_acceptors = []
+        for name, group in ph4_types:
+            for x,y,z in zip(group['x'], group['y'], group['z']):
+                coords = [x,y,z]
+                if name == 'Donor':
+                    donors.append(coords)
+                elif name == 'Acceptor':
+                    acceptors.append(coords)
+                elif name == 'Donor-Acceptor':
+                    donor_acceptors.append(coords)
 
-        # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
-        # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
 
-            n_query_acceptors = len(query_acceptor_coords)
-            n_query_donors = len(query_donor_coords)
-            args = []
-            if n_query_acceptors:
-                args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
-            if n_query_donors:
-                args.append(itertools.permutations(donors, len(query_donor_coords)))
-            args = tuple(args)
+    # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
+    # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
 
-            for permutation in itertools.product(*args):
-                permutation = np.concatenate(permutation) # change from tuple to array
-                ph4_permutations.append(permutation)
+        n_query_acceptors = len(query_acceptor_coords)
+        n_query_donors = len(query_donor_coords)
+        n_query_donor_acceptors = len(query_donor_acceptor_coords)
+        args = []
+        if n_query_acceptors:
+            args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
+        if n_query_donors:
+            args.append(itertools.permutations(donors, len(query_donor_coords)))
+        if n_query_donor_acceptors:
+            args.append(itertools.permutations(donor_acceptors, len(query_donor_acceptor_coords)))
+        
+        args = tuple(args)
 
-            return ph4_permutations
+        for permutation in itertools.product(*args):
+            permutation = np.concatenate(permutation) # change from tuple to array
+            ph4_permutations.append(permutation)
+
+    return ph4_permutations
 
