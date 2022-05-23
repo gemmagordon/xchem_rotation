@@ -10,7 +10,6 @@ from rdkit import RDConfig, Chem
 from rdkit.Chem import AllChem
 from collections import defaultdict
 import matplotlib.pyplot as plt
-import brute_force_func_new as bf
 import scipy
 import pandas as pd
 import itertools
@@ -18,17 +17,18 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import AgglomerativeClustering
 import joblib
 from joblib import Parallel, delayed
-
+import brute_force_func_new as bf
 
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(fragment_files)[:5]
-frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, \
-                            (donor_idxs, acceptor_idxs, aromatic_idxs) = bf.get_coords(frag_mols)
+frag_mols = bf.sdf_to_mol(sorted(fragment_files))[:5]
+frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords, \
+    (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs) = bf.get_coords(frag_mols)
 
+#bf.plot_coords(frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords)
 
-### SET UP QUERY POINTS
+## SET UP QUERY POINTS
 #query_sdfs, query_filenames = bf.get_sdfs('Mpro_query')
 #query_mols = bf.sdf_to_mol(query_sdfs)
 
@@ -36,20 +36,24 @@ frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, \
 query_mols = frag_mols
 
 # get ph4 coords for a single mol
-query_donor_coords, query_acceptor_coords, query_aromatic_coords = bf.get_coords_query(query_mols[0])
-print(np.concatenate([query_donor_coords, query_acceptor_coords]))
+query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords = bf.get_coords_query(query_mols[2])
 
 # transform points for test
-query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans \
-    = transform_ph4s([query_donor_coords, query_acceptor_coords, query_aromatic_coords], angleX=np.pi, angleY=0.45, angleZ=0,
-                     translateX=1, translateY=23)
+# query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans, query_donor_acceptor_coords_trans \
+#     = transform_ph4s([query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords], angleX=np.pi, angleY=0.45, angleZ=0,
+#                      translateX=1, translateY=23)
 
-query_points = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans])
-#query_points = np.concatenate([query_donor_coords, query_acceptor_coords])
+# query_points_trans = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans])
 
-#qm_aligned, rmsd_val = kabsch.align_coords(query_points_trans, query_points)
-#print('RESULT:', rmsd_val)
-#print(qm_aligned)
+concat_list = []
+for item in [query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords]:
+    if len(item) > 0:
+        concat_list.append(item)
+query_points = np.concatenate(concat_list)
+
+# qm_aligned, rmsd_val = kabsch.align_coords(query_points_trans, query_points)
+# print('RESULT:', rmsd_val)
+# print(qm_aligned)
 
 # # Brute force draft
 ### CLUSTER POCKET POINTS 
@@ -77,6 +81,7 @@ def create_ph4_df(ph4_coords):
 
 donor_df = create_ph4_df(frag_donor_coords)
 acceptor_df = create_ph4_df(frag_acceptor_coords)
+donor_acceptor_df = create_ph4_df(frag_donor_acceptor_coords)
 
 
 # Find centroids of clusters: 
@@ -107,6 +112,7 @@ def create_centroid_df(ph4_df):
 
 donor_centroid_df = create_centroid_df(donor_df)
 acceptor_centroid_df = create_centroid_df(acceptor_df)
+donor_acceptor_centroid_df = create_centroid_df(donor_acceptor_df)
 
 # collect all points together as new pocket points
 # create df with centroid points and labels for which ph4 type, so can separate back out different ph4 types later
@@ -115,10 +121,13 @@ acceptor_centroid_df = create_centroid_df(acceptor_df)
 # NOTE for test removing centroids at first to see if works with exact points; should be RMSD=0 
 donor_centroid_df = donor_df 
 acceptor_centroid_df = acceptor_df
+donor_acceptor_centroid_df = donor_acceptor_df
+
 print('check donor_df length', len(donor_centroid_df))
 print('check acc df length', len(acceptor_centroid_df))
+print('check don-acc df length', len(donor_acceptor_centroid_df))
 
-centroid_dfs = [donor_centroid_df, acceptor_centroid_df]
+centroid_dfs = [donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df]
 
 
 def create_pocket_df(centroid_dfs):
@@ -130,6 +139,8 @@ def create_pocket_df(centroid_dfs):
             centroid_df['ph4_label'] = 'Donor'
         elif centroid_df is acceptor_centroid_df:
             centroid_df['ph4_label'] = 'Acceptor'
+        elif centroid_df is donor_acceptor_centroid_df:
+            centroid_df['ph4_label'] = 'Donor-Acceptor'
 
         labelled_dfs.append(centroid_df)
 
@@ -179,25 +190,31 @@ def generate_permutations(pocket_df):
         # get arrays of point coords from each ph4 type
         donors = []
         acceptors = []
+        donor_acceptors = []
         for name, group in ph4_types:
-            print(name, len(group))  # checked - gives totals of acceptors/donors expected
             for x,y,z in zip(group['x'], group['y'], group['z']):
                 coords = [x,y,z]
                 if name == 'Donor':
                     donors.append(coords)
                 elif name == 'Acceptor':
                     acceptors.append(coords)
+                elif name == 'Donor-Acceptor':
+                    donor_acceptors.append(coords)
 
     # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
     # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
 
         n_query_acceptors = len(query_acceptor_coords)
         n_query_donors = len(query_donor_coords)
+        n_query_donor_acceptors = len(query_donor_acceptor_coords)
         args = []
         if n_query_acceptors:
             args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
         if n_query_donors:
             args.append(itertools.permutations(donors, len(query_donor_coords)))
+        if n_query_donor_acceptors:
+            args.append(itertools.permutations(donor_acceptors, len(query_donor_acceptor_coords)))
+        
         args = tuple(args)
 
         for permutation in itertools.product(*args):
@@ -209,14 +226,12 @@ def generate_permutations(pocket_df):
 ph4_permutations = generate_permutations(pocket_df)
 print('TOTAL PERMUTATIONS:', len(ph4_permutations))
 
-
 # create df to hold results
 results_df = pd.DataFrame()
 rmsd_vals = []
 qm_aligned_all = []
 
 results = Parallel(n_jobs=2)(delayed(kabsch.align_coords)(query_points=query_points, ref_points=permutation) for permutation in ph4_permutations)
-print(results[0])
 
 for result in results:
     qm_aligned_all.append(result[0])
@@ -231,11 +246,9 @@ print('best RMSD:', np.min(rmsd_vals))
 # get row of df with lowest RMSD to get fragment and query points
 best_results = results_df.loc[results_df['RMSD'] == np.min(results_df['RMSD'])]
 best_results = pd.DataFrame(best_results, columns=['RMSD', 'Fragment', 'Query'])
-print(len(best_results))
 
 for best_result in best_results.itertuples(index=False):
 
-    print(best_result[2])
     # plot best result/s (sometimes multiple with same RMSD)
     ax = plt.figure(figsize=(7,7)).add_subplot(projection='3d')
     # plot matrices for comparison 
