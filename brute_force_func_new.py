@@ -1,4 +1,5 @@
 import os
+from queue import Empty
 import numpy as np
 from rdkit import RDConfig, Chem
 from rdkit.Chem import AllChem
@@ -91,15 +92,8 @@ def getPharmacophoreCoords(mol, features_names=["Acceptor", "Donor", "Aromatic"]
 # NOTE should change just to work for one molecule rather than looping through
 def get_coords(mols):
 
-    donor_coords = []
-    acceptor_coords = []
-    aromatic_coords = []
-    donor_idxs = []
-    acceptor_idxs = []
-    aromatic_idxs = []
-
-    donor_acceptor_coords = []
-    donor_acceptor_idxs = []
+    donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords = [], [], [], []
+    donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs = [], [], [], []
 
     for i, mol in enumerate(mols):
 
@@ -111,19 +105,14 @@ def get_coords(mols):
 
         if _donor_coord is not None and _acceptor_coord is not None:
             # get common coords from donors and acceptors and add to donor-acceptor group
-            donor_acceptor_coord = [x for x in _donor_coord if x in _acceptor_coord] 
-
+            donor_acceptor_coord = [x for x in _donor_coord if x in _acceptor_coord]
             # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
             donor_coord = [x for x in _donor_coord if x not in _acceptor_coord]
             acceptor_coord = [x for x in _acceptor_coord if x not in _donor_coord]
 
-            donor_acceptor_coords = np.append(donor_acceptor_coords, donor_acceptor_coord.copy())
-            donor_coords = np.append(donor_coords, donor_coord.copy())
-            acceptor_coords = np.append(acceptor_coords, acceptor_coord.copy())
-            
-    donor_acceptor_coords = donor_acceptor_coords.reshape(-1,3)
-    donor_coords = donor_coords.reshape(-1,3)
-    acceptor_coords = acceptor_coords.reshape(-1,3)
+            donor_acceptor_coords.append(np.array(donor_acceptor_coord))
+            donor_coords.append(np.array(donor_coord))
+            acceptor_coords.append(np.array(acceptor_coord))
 
     # remove None values
     _donor_coords = []
@@ -154,34 +143,33 @@ def get_coords(mols):
             aromatic_idxs += [i] * len(x)
     aromatic_coords = _aromatic_coords
 
-
     if len(donor_coords) == 0:
         donor_coords = np.array(donor_coords).reshape(-1,3)
-    else: 
+    else:
+        donor_coords = [x for x in donor_coords if len(x)!= 0]
         donor_coords = np.concatenate(donor_coords)
         donor_idxs = np.array(donor_idxs)
-    
+
     if len(acceptor_coords) == 0:
         acceptor_coords = np.array(acceptor_coords).reshape(-1,3)
     else:
+        acceptor_coords = [x for x in acceptor_coords if len(x)!= 0]
         acceptor_coords = np.concatenate(acceptor_coords)
         acceptor_idxs = np.array(acceptor_idxs)
-    
+
     if len(donor_acceptor_coords) == 0:
         donor_acceptor_coords = np.array(donor_acceptor_coords).reshape(-1,3)
     else:
-        donor_acceptor_coords = np.concatenate(donor_acceptor_coords).reshape(-1,3) # NOTE keep reshape here
+        donor_acceptor_coords = [x for x in donor_acceptor_coords if len(x)!= 0]
+        donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
         donor_acceptor_idxs = np.array(donor_acceptor_idxs)
 
     if len(aromatic_coords) == 0:
         aromatic_coords = np.array(aromatic_coords).reshape(-1,3)
     else:
+        aromatic_coords = [x for x in aromatic_coords if len(x)!= 0]
         aromatic_coords = np.concatenate(aromatic_coords)
         aromatic_idxs = np.array(aromatic_idxs)
-
-    donor_acceptor_coords = donor_acceptor_coords.reshape(-1,3)
-    donor_coords = donor_coords.reshape(-1,3)
-    acceptor_coords = acceptor_coords.reshape(-1,3)
 
     return donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords, (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs)
 
@@ -196,30 +184,32 @@ def get_coords_query(mol):
 
     # get common coords from donors and acceptors and add to donor-acceptor group
     if _donor_coords is not None and _acceptor_coords is not None:
-        donor_acceptor_coords = [i for i in _donor_coords if i in _acceptor_coords] 
-        donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
+        donor_acceptor_coords = [i for i in _donor_coords if i in _acceptor_coords]
+        if len(donor_acceptor_coords) > 0:
+            donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
         # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
         donor_coords = [i for i in _donor_coords if i not in _acceptor_coords]
         acceptor_coords = [i for i in _acceptor_coords if i not in _donor_coords]
 
-    # remove None values
-    if donor_coords is not None:
-        donor_coords = [x for x in donor_coords if x is not None]
-        donor_coords = np.concatenate([donor_coords])
-    else:
-        donor_coords = np.array([]).reshape(-1,3)
-    
-    if acceptor_coords is not None:
-        acceptor_coords = [x for x in acceptor_coords if x is not None]
-        acceptor_coords = np.concatenate([acceptor_coords])
-    else:
-        acceptor_coords = np.array([]).reshape(-1, 3)
-    
-    if donor_acceptor_coords is not None:
-        donor_acceptor_coords = [x for x in donor_acceptor_coords if x is not None]
-        donor_acceptor_coords = np.concatenate([donor_acceptor_coords]).reshape(-1,3)
-    else:
-        donor_acceptor_coords = np.array([]).reshape(-1, 3)
+        # remove None values
+        if donor_coords is not None:
+            donor_coords = [x for x in donor_coords if x is not None]
+            donor_coords = np.concatenate([donor_coords])
+        else:
+            donor_coords = np.array([]).reshape(-1,3)
+        
+        if acceptor_coords is not None:
+            acceptor_coords = [x for x in acceptor_coords if x is not None]
+            acceptor_coords = np.concatenate([acceptor_coords])
+        else:
+            acceptor_coords = np.array([]).reshape(-1, 3)
+        
+        if donor_acceptor_coords is not None:
+            donor_acceptor_coords = [x for x in donor_acceptor_coords if x is not None]
+            donor_acceptor_coords = np.concatenate([donor_acceptor_coords]).reshape(-1,3)
+        else:
+            donor_acceptor_coords = np.array([]).reshape(-1, 3)
+
 
     if aromatic_coords is not None:
         aromatic_coords = [x for x in aromatic_coords if x is not None]

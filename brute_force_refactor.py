@@ -18,13 +18,17 @@ from sklearn.cluster import AgglomerativeClustering
 import joblib
 from joblib import Parallel, delayed
 import brute_force_func_new as bf
+import rich
+from rich import print as rprint
 
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(sorted(fragment_files))[:5]
+frag_mols = bf.sdf_to_mol(fragment_files)[:5]
+rprint('NUM FRAGMENTS:', len(frag_mols))
 frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords, \
     (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs) = bf.get_coords(frag_mols)
+
 
 #bf.plot_coords(frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords)
 
@@ -36,7 +40,10 @@ frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_accept
 query_mols = frag_mols
 
 # get ph4 coords for a single mol
-query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords = bf.get_coords_query(query_mols[2])
+query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords = bf.get_coords_query(query_mols[0])
+rprint('num query donors', len(query_donor_coords))
+rprint('num query acceptors', len(query_acceptor_coords))
+rprint('num query don-acc', len(query_donor_acceptor_coords))
 
 # transform points for test
 # query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans, query_donor_acceptor_coords_trans \
@@ -50,6 +57,7 @@ for item in [query_donor_coords, query_acceptor_coords, query_aromatic_coords, q
     if len(item) > 0:
         concat_list.append(item)
 query_points = np.concatenate(concat_list)
+rprint('NUM QUERY POINTS', len(query_points))
 
 # qm_aligned, rmsd_val = kabsch.align_coords(query_points_trans, query_points)
 # print('RESULT:', rmsd_val)
@@ -63,26 +71,27 @@ def cluster(data, distance_threshold):
     model = AgglomerativeClustering(linkage='average', n_clusters=None, distance_threshold=distance_threshold) # 0.5 - 1 
     model.fit_predict(data)
     pred = model.fit_predict(data)
-    print("Number of clusters found: {}".format(len(set(model.labels_))))
+    rprint("Number of clusters found: {}".format(len(set(model.labels_))))
     labels = model.labels_
     #print('Cluster for each point: ', model.labels_)
 
     return labels
 
-def create_ph4_df(ph4_coords):
+def create_ph4_df(ph4_coords, idxs):
     '''cluster ph4 coords and add to df with labels for which cluster each point is in'''
     # cluster donor coords and add with labels to df
     labels = cluster(ph4_coords, distance_threshold=1)
     ph4_df = pd.DataFrame([ph4_coords[:,0], ph4_coords[:,1], ph4_coords[:,2], labels])
     ph4_df = ph4_df.transpose()
     ph4_df.columns = ['x', 'y', 'z', 'cluster_label']
+    # track which fragment coords come from
+    ph4_df['ID'] = idxs
 
     return ph4_df
 
-donor_df = create_ph4_df(frag_donor_coords)
-acceptor_df = create_ph4_df(frag_acceptor_coords)
-donor_acceptor_df = create_ph4_df(frag_donor_acceptor_coords)
-
+donor_df = create_ph4_df(frag_donor_coords, donor_idxs)
+acceptor_df = create_ph4_df(frag_acceptor_coords, acceptor_idxs)
+donor_acceptor_df = create_ph4_df(frag_donor_acceptor_coords, donor_acceptor_idxs)
 
 # Find centroids of clusters: 
 def get_centroids(ph4_df):
@@ -123,9 +132,9 @@ donor_centroid_df = donor_df
 acceptor_centroid_df = acceptor_df
 donor_acceptor_centroid_df = donor_acceptor_df
 
-print('check donor_df length', len(donor_centroid_df))
-print('check acc df length', len(acceptor_centroid_df))
-print('check don-acc df length', len(donor_acceptor_centroid_df))
+rprint('check donor_df length', len(donor_centroid_df))
+rprint('check acc df length', len(acceptor_centroid_df))
+rprint('check don-acc df length', len(donor_acceptor_centroid_df))
 
 centroid_dfs = [donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df]
 
@@ -149,16 +158,14 @@ def create_pocket_df(centroid_dfs):
     return pocket_df
 
 pocket_df = create_pocket_df(centroid_dfs)
-print('check pocket_df length', len(pocket_df))
-print(pocket_df.columns)
-
+rprint('check pocket_df length', len(pocket_df))
 
 ### FILTER BY DISTANCE:
 def filter_by_dist(query_points, pocket_df):
     # get max distance for pairwise points of query molecule
     pdist_q = scipy.spatial.distance.pdist(query_points, metric='euclidean')
     max_query_dist = np.max(pdist_q)
-    print('MAX DIST:', max_query_dist)
+    rprint('MAX DIST:', max_query_dist)
 
     # get possible subpockets of fragment cloud by clustering, use query max dist as threshold
     pocket_points = []
@@ -174,6 +181,7 @@ def filter_by_dist(query_points, pocket_df):
 
 
 pocket_df = filter_by_dist(query_points, pocket_df)
+pocket_df.to_csv('pocket_df.csv')
 
 def generate_permutations(pocket_df):
 
@@ -218,34 +226,68 @@ def generate_permutations(pocket_df):
         args = tuple(args)
 
         for permutation in itertools.product(*args):
-            permutation = np.concatenate(permutation) # change from tuple to array
-            ph4_permutations.append(permutation)
+            permutation = np.concatenate(permutation)
+            frag_idxs = []
+            ph4_idxs = []
+            for coords in permutation:
+                # find if coords from donor/acceptor/donor-acceptor (removes error if any same for diff fragments?)
+                # get index of coords in df after determining ph4 type
+                if len(donors) > 0 and np.any(np.all(coords == donors, axis=1)) == True:
+                    ph4_idx = 'Donor'
+                    # get frag ID from pocket_df by matching to (a) ph4 type (b) coords
+                    frag_idx = donor_centroid_df.loc[(donor_centroid_df['x'] == coords[0]) & (donor_centroid_df['y'] == coords[1]) & (donor_centroid_df['z'] == coords[2]), 'ID']
+                    frag_idx = list(frag_idx)
+                elif len(acceptors) > 0 and np.any(np.all(coords == acceptors, axis=1)) == True:
+                    ph4_idx = 'Acceptor'
+                    frag_idx = acceptor_centroid_df.loc[(acceptor_centroid_df['x'] == coords[0]) & (acceptor_centroid_df['y'] == coords[1]) & (acceptor_centroid_df['z'] == coords[2]), 'ID']
+                    frag_idx = list(frag_idx)
+                elif len(donor_acceptors) > 0 and np.any(np.all(coords == donor_acceptors, axis=1)) == True:
+                    ph4_idx = 'Donor-Acceptor'
+                    frag_idx = donor_acceptor_centroid_df.loc[(donor_acceptor_centroid_df['x'] == coords[0]) & (donor_acceptor_centroid_df['y'] == coords[1]) & (donor_acceptor_centroid_df['z'] == coords[2]), 'ID'] 
+                    frag_idx = list(frag_idx)
+                ph4_idxs.append(ph4_idx)
+                frag_idxs.append(frag_idx)
+
+            permutation = permutation.reshape(-1,3) # change from tuple to array
+            points = (permutation, ph4_idxs, frag_idxs)
+            ph4_permutations.append(points)
 
     return ph4_permutations
 
 ph4_permutations = generate_permutations(pocket_df)
-print('TOTAL PERMUTATIONS:', len(ph4_permutations))
+rprint('TOTAL PERMUTATIONS:', len(ph4_permutations))
 
 # create df to hold results
 results_df = pd.DataFrame()
 rmsd_vals = []
 qm_aligned_all = []
 
-results = Parallel(n_jobs=2)(delayed(kabsch.align_coords)(query_points=query_points, ref_points=permutation) for permutation in ph4_permutations)
+results = Parallel(n_jobs=2)(delayed(kabsch.align_coords)(query_points=query_points, ref_points=permutation) for permutation, ph4_idxs, frag_idxs in ph4_permutations)
 
 for result in results:
     qm_aligned_all.append(result[0])
     rmsd_vals.append(result[1])
 
 results_df['RMSD'] = pd.Series(rmsd_vals)
-results_df['Fragment'] = pd.Series(ph4_permutations)
 results_df['Query'] = pd.Series(qm_aligned_all)
-print('best RMSD:', np.min(rmsd_vals))
+
+frag_coords = [p[0] for p in ph4_permutations]
+results_df['Fragment'] = pd.Series(frag_coords)
+# get fragment ID and ph4 type for each point in permutation
+ph4_idxs = [p[1] for p in ph4_permutations]
+results_df['PH4 types'] = pd.Series(ph4_idxs)
+frag_idxs = [p[2] for p in ph4_permutations]
+results_df['IDs'] = pd.Series(frag_idxs)
+
+rprint('Best RMSD:', np.min(rmsd_vals))
 
 # Get best result/s:
 # get row of df with lowest RMSD to get fragment and query points
 best_results = results_df.loc[results_df['RMSD'] == np.min(results_df['RMSD'])]
-best_results = pd.DataFrame(best_results, columns=['RMSD', 'Fragment', 'Query'])
+best_results = pd.DataFrame(best_results, columns=['RMSD', 'Fragment', 'Query', 'PH4 types', 'IDs'])
+
+rprint(best_results)
+best_results.to_csv('debug.csv')
 
 for best_result in best_results.itertuples(index=False):
 
