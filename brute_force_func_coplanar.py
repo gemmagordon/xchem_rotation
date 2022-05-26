@@ -112,14 +112,18 @@ def get_coords_query(mol):
     pharma_coords, __ = getPharmacophoreCoords(mol)
     donor_coords = pharma_coords.get('Donor')
     acceptor_coords = pharma_coords.get('Acceptor')
-    print('QUERY DONOR COORDS:', donor_coords)
-
+    x = np.concatenate([donor_coords, acceptor_coords])
+    # print(x)
+    # print(np.linalg.matrix_rank(x))
+    # input('enter here to continue')
+    if np.linalg.matrix_rank(x) <3:
+        return None
     return donor_coords, acceptor_coords
 
 
 def clean_ph4_points(donor_coords, acceptor_coords):
 
-    donor_idxs, acceptor_idxs, donor_acceptor_idxs = [], [], []
+    donor_idxs, acceptor_idxs = [], []
 
     # REMOVE NONE VALUES HERE otherwise messes up coords later
     if donor_coords is not None:
@@ -144,16 +148,12 @@ def clean_ph4_points(donor_coords, acceptor_coords):
     _acceptor_coords, _acceptor_idxs = format_coords(acceptor_coords, acceptor_idxs)
 
     if len(_donor_coords) > 0 and len(_acceptor_coords) > 0:
-        #np.isclose(a,b, atol=0.01)
-        # get common coords from donors and acceptors and add to donor-acceptor group
-        donor_acceptor_coords = multidim_intersect(_donor_coords, _acceptor_coords)
         # reduce donor and acceptor points to those that don't appear in donor_acceptor group
-        donor_coords = multidim_unique(_donor_coords, donor_acceptor_coords)
-        acceptor_coords = multidim_unique(_acceptor_coords, donor_acceptor_coords)
+        donor_coords = multidim_unique(_donor_coords, _acceptor_coords)
+        acceptor_coords = multidim_unique(_acceptor_coords, _donor_coords)
         # get updated idxs
         donor_idxs = []
         acceptor_idxs = []
-        donor_acceptor_idxs = []
 
         # for dc in _donor_coords: 
         for i, dc in enumerate(_donor_coords):
@@ -166,12 +166,7 @@ def clean_ph4_points(donor_coords, acceptor_coords):
             if ac in acceptor_coords:
                 acceptor_idxs.append(_acceptor_idxs[i])
 
-        # NOTE filler for now until fix getting D-A idxs:
-        donor_acceptor_idxs = np.arange(0, len(donor_acceptor_coords), 1)
-
     else: 
-        donor_acceptor_coords = np.array([])
-        donor_acceptor_idxs = []
         donor_coords = _donor_coords
         acceptor_coords = _acceptor_coords
         donor_idxs = _donor_idxs
@@ -182,7 +177,7 @@ def clean_ph4_points(donor_coords, acceptor_coords):
     #print(len(acceptor_coords))
     #print(len(multidim_intersect(donor_coords, acceptor_coords)))
     
-    return donor_coords, acceptor_coords, donor_acceptor_coords, (donor_idxs, acceptor_idxs, donor_acceptor_idxs)
+    return donor_coords, acceptor_coords, (donor_idxs, acceptor_idxs)
 
 
 def get_unique(arr):
@@ -236,8 +231,8 @@ def plot_coords(donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_c
     ax = plt.axes(projection='3d')
 
     # visualize the 3D cloud of fragment pharmacophores. They are a good representation of the protein pocket.
-    labels = ['Donor', 'Acceptor', 'Aromatic', 'Donor-Acceptor']
-    for coords, label in zip([donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords], labels):
+    labels = ['Donor', 'Acceptor', 'Aromatic']
+    for coords, label in zip([donor_coords, acceptor_coords], labels):
         if len(coords) != 0:
             ax.scatter3D(coords[:,0], coords[:,1], coords[:,2], label=label)
 
@@ -247,7 +242,8 @@ def plot_coords(donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_c
     return
 
 def cluster(data, distance_threshold):
-
+    if data.shape[0] ==1 :
+        return np.zeros(1, dtype=int)
     model = AgglomerativeClustering(linkage='average', n_clusters=None, distance_threshold=distance_threshold) # 0.5 - 1 
     model.fit_predict(data)
     pred = model.fit_predict(data)
@@ -297,17 +293,15 @@ def create_centroid_df(ph4_df):
     return centroid_df
 
 
-def create_pocket_df(donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df):
+def create_pocket_df(donor_centroid_df, acceptor_centroid_df):
 
     labelled_dfs =[]
-    centroid_dfs = [donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df]
+    centroid_dfs = [donor_centroid_df, acceptor_centroid_df]
     for centroid_df in centroid_dfs:
         if centroid_df is donor_centroid_df:
             centroid_df['ph4_label'] = 'Donor'
         elif centroid_df is acceptor_centroid_df:
             centroid_df['ph4_label'] = 'Acceptor'
-        elif centroid_df is donor_acceptor_centroid_df:
-            centroid_df['ph4_label'] = 'Donor-Acceptor'
 
         labelled_dfs.append(centroid_df)
 
@@ -352,7 +346,6 @@ def generate_permutations(pocket_df):
         # get arrays of point coords from each ph4 type
         donors = []
         acceptors = []
-        donor_acceptors = []
         for name, group in ph4_types:
             for x,y,z in zip(group['x'], group['y'], group['z']):
                 coords = [x,y,z]
@@ -360,23 +353,19 @@ def generate_permutations(pocket_df):
                     donors.append(coords)
                 elif name == 'Acceptor':
                     acceptors.append(coords)
-                elif name == 'Donor-Acceptor':
-                    donor_acceptors.append(coords)
+
 
     # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
     # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
 
         n_query_acceptors = len(query_acceptor_coords)
         n_query_donors = len(query_donor_coords)
-        n_query_donor_acceptors = len(query_donor_acceptor_coords)
         args = []
         if n_query_acceptors:
             args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
         if n_query_donors:
             args.append(itertools.permutations(donors, len(query_donor_coords)))
-        if n_query_donor_acceptors:
-            args.append(itertools.permutations(donor_acceptors, len(query_donor_acceptor_coords)))
-        
+
         args = tuple(args)
 
         for permutation in itertools.product(*args):
@@ -395,10 +384,7 @@ def generate_permutations(pocket_df):
                     ph4_idx = 'Acceptor'
                     frag_idx = acceptor_centroid_df.loc[(acceptor_centroid_df['x'] == coords[0]) & (acceptor_centroid_df['y'] == coords[1]) & (acceptor_centroid_df['z'] == coords[2]), 'ID']
                     frag_idx = list(frag_idx)
-                elif len(donor_acceptors) > 0 and np.any(np.all(coords == donor_acceptors, axis=1)) == True:
-                    ph4_idx = 'Donor-Acceptor'
-                    frag_idx = donor_acceptor_centroid_df.loc[(donor_acceptor_centroid_df['x'] == coords[0]) & (donor_acceptor_centroid_df['y'] == coords[1]) & (donor_acceptor_centroid_df['z'] == coords[2]), 'ID'] 
-                    frag_idx = list(frag_idx)
+
                 ph4_idxs.append(ph4_idx)
                 frag_idxs.append(frag_idx)
 

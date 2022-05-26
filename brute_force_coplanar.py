@@ -17,7 +17,7 @@ import matplotlib.pyplot as plt
 from sklearn.cluster import AgglomerativeClustering
 import joblib
 from joblib import Parallel, delayed
-import brute_force_func_new as bf
+import brute_force_func_coplanar as bf
 import rich
 from rich import print as rprint
 
@@ -25,10 +25,11 @@ from rich import print as rprint
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
 frag_mols = bf.sdf_to_mol(fragment_files)[:5]
+frag_mols = frag_mols[1:2]
+
 rprint('NUM FRAGMENTS:', len(frag_mols))
 frag_donor_coords, frag_acceptor_coords = bf.get_coords_fragments(frag_mols)
-frag_donor_coords, frag_acceptor_coords, frag_donor_acceptor_coords, \
-        (donor_idxs, acceptor_idxs, donor_acceptor_idxs) = bf.clean_ph4_points(frag_donor_coords, frag_acceptor_coords)
+frag_donor_coords, frag_acceptor_coords, (donor_idxs, acceptor_idxs) = bf.clean_ph4_points(frag_donor_coords, frag_acceptor_coords)
 
 print(frag_donor_coords)
 ## SET UP QUERY POINTS
@@ -36,34 +37,37 @@ print(frag_donor_coords)
 #query_mols = bf.sdf_to_mol(query_sdfs)
 
 # NOTE while testing - use pocket fragments as query mols
-query_mols = frag_mols
+query_mols = frag_mols 
 
 # get ph4 coords for a single mol
-query_donor_coords, query_acceptor_coords = bf.get_coords_query(query_mols[2])
-query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords, (q_do_idxs, q_ac_idxs, q_ar_idxs) = bf.clean_ph4_points(query_donor_coords, query_acceptor_coords)
+results = bf.get_coords_query(query_mols[0])
+if results is None:
+    raise ValueError('Not valid query. ph4s are coplanar')
+else:
+    query_donor_coords, query_acceptor_coords = results
+
+query_donor_coords, query_acceptor_coords, (q_do_idxs, q_ac_idxs) = bf.clean_ph4_points(query_donor_coords, query_acceptor_coords)
 
 rprint('num query donors', len(query_donor_coords))
 rprint('num query acceptors', len(query_acceptor_coords))
-rprint('num query don-acc', len(query_donor_acceptor_coords))
-
 
 # transform points for test
-query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans \
-        = transform_ph4s([query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords], angleX=np.pi, angleY=0.45, angleZ=0,
+query_donor_coords_trans, query_acceptor_coords_trans, \
+        = transform_ph4s([query_donor_coords, query_acceptor_coords], angleX=np.pi, angleY=0.45, angleZ=0,
                         translateX=1, translateY=23)
 
 
 transf_concat_list = []
-for item in [query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans]:
+for item in [query_donor_coords_trans, query_acceptor_coords_trans]:
     if len(item) > 0:
         transf_concat_list.append(item)
 query_points_trans = np.concatenate(transf_concat_list)
 rprint('NUM trans QUERY POINTS', len(query_points_trans))
 
-query_points_trans = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans])
+query_points_trans = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans])
 
 concat_list = []
-for item in [query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords]:
+for item in [query_donor_coords, query_acceptor_coords]:
     if len(item) > 0:
         concat_list.append(item)
 query_points = np.concatenate(concat_list)
@@ -89,7 +93,6 @@ def cluster(data, distance_threshold):
 
 donor_df = bf.create_ph4_df(frag_donor_coords, donor_idxs)
 acceptor_df = bf.create_ph4_df(frag_acceptor_coords, acceptor_idxs)
-donor_acceptor_df = bf.create_ph4_df(frag_donor_acceptor_coords, donor_acceptor_idxs)
 
 
 # Find centroids of clusters: 
@@ -120,7 +123,7 @@ def create_centroid_df(ph4_df):
 
 donor_centroid_df = create_centroid_df(donor_df)
 acceptor_centroid_df = create_centroid_df(acceptor_df)
-donor_acceptor_centroid_df = create_centroid_df(donor_acceptor_df)
+
 
 # collect all points together as new pocket points
 # create df with centroid points and labels for which ph4 type, so can separate back out different ph4 types later
@@ -129,22 +132,22 @@ donor_acceptor_centroid_df = create_centroid_df(donor_acceptor_df)
 # NOTE for test removing centroids at first to see if works with exact points; should be RMSD=0 
 donor_centroid_df = donor_df 
 acceptor_centroid_df = acceptor_df
-donor_acceptor_centroid_df = donor_acceptor_df
 
 rprint('check donor_df length', len(donor_centroid_df))
 rprint('check acc df length', len(acceptor_centroid_df))
-rprint('check don-acc df length', len(donor_acceptor_centroid_df))
 
-centroid_dfs = [donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df]
 
 # CREATE DF OF ALL POINTS
-pocket_df = bf.create_pocket_df(donor_centroid_df, acceptor_centroid_df, donor_acceptor_centroid_df)
+pocket_df = bf.create_pocket_df(donor_centroid_df, acceptor_centroid_df)
 rprint('check pocket_df length', len(pocket_df))
 
 ### FILTER BY DISTANCE:
 def filter_by_dist(query_points, pocket_df):
     # get max distance for pairwise points of query molecule
+    # print(query_points.shape)
+    assert query_points.shape[0] > 2, 'Error, to few points'
     pdist_q = scipy.spatial.distance.pdist(query_points, metric='euclidean')
+    # print(pdist_q)
     max_query_dist = np.max(pdist_q)
     rprint('MAX DIST:', max_query_dist)
 
@@ -179,7 +182,6 @@ def generate_permutations(pocket_df):
         # get arrays of point coords from each ph4 type
         donors = []
         acceptors = []
-        donor_acceptors = []
         for name, group in ph4_types:
             for x,y,z in zip(group['x'], group['y'], group['z']):
                 coords = [x,y,z]
@@ -187,31 +189,30 @@ def generate_permutations(pocket_df):
                     donors.append(coords)
                 elif name == 'Acceptor':
                     acceptors.append(coords)
-                elif name == 'Donor-Acceptor':
-                    donor_acceptors.append(coords)
+
 
     # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
     # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
 
         n_query_acceptors = len(query_acceptor_coords)
         n_query_donors = len(query_donor_coords)
-        n_query_donor_acceptors = len(query_donor_acceptor_coords)
         args = []
-        if n_query_acceptors:
-            args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
         if n_query_donors:
             args.append(itertools.permutations(donors, len(query_donor_coords)))
-        if n_query_donor_acceptors:
-            args.append(itertools.permutations(donor_acceptors, len(query_donor_acceptor_coords)))
-        
-        args = tuple(args)
+        if n_query_acceptors:
+            args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
 
+        args = tuple(args)
+        print(list);input()
+        print(list(itertools.product(*args)))
         for permutation in itertools.product(*args):
+
             permutation = np.concatenate(permutation)
-            
+            print(permutation)
             frag_idxs = []
             ph4_idxs = []
             for coords in permutation:
+                print(coords)
                 # find if coords from donor/acceptor/donor-acceptor (removes error if any same for diff fragments?)
                 # get index of coords in df after determining ph4 type
                 if len(donors) > 0 and np.any(np.all(coords == donors, axis=1)) == True:
@@ -223,10 +224,7 @@ def generate_permutations(pocket_df):
                     ph4_idx = 'Acceptor'
                     frag_idx = acceptor_centroid_df.loc[(acceptor_centroid_df['x'] == coords[0]) & (acceptor_centroid_df['y'] == coords[1]) & (acceptor_centroid_df['z'] == coords[2]), 'ID']
                     frag_idx = list(frag_idx)
-                elif len(donor_acceptors) > 0 and np.any(np.all(coords == donor_acceptors, axis=1)) == True:
-                    ph4_idx = 'Donor-Acceptor'
-                    frag_idx = donor_acceptor_centroid_df.loc[(donor_acceptor_centroid_df['x'] == coords[0]) & (donor_acceptor_centroid_df['y'] == coords[1]) & (donor_acceptor_centroid_df['z'] == coords[2]), 'ID'] 
-                    frag_idx = list(frag_idx)
+
                 ph4_idxs.append(ph4_idx)
                 frag_idxs.append(frag_idx)
 
@@ -245,6 +243,7 @@ rmsd_vals = []
 qm_aligned_all = []
 
 results = Parallel(n_jobs=2)(delayed(kabsch.align_coords)(query_points=query_points, ref_points=permutation) for permutation, ph4_idxs, frag_idxs in ph4_permutations)
+print(results)
 
 for result in results:
     qm_aligned_all.append(result[0])
