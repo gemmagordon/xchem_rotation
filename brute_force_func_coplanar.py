@@ -110,8 +110,10 @@ def get_coords_query(mol):
 
     # .get() will just fill with None if key doesn't exist
     pharma_coords, __ = getPharmacophoreCoords(mol)
-    donor_coords = pharma_coords.get('Donor')
-    acceptor_coords = pharma_coords.get('Acceptor')
+    donor_coords = pharma_coords.get('Donor', np.empty((0,3)))
+    acceptor_coords = pharma_coords.get('Acceptor', np.empty((0,3)))
+    print('DONOR COORDS', donor_coords)
+    print('ACC COORDS', acceptor_coords)
     x = np.concatenate([donor_coords, acceptor_coords])
     # print(x)
     # print(np.linalg.matrix_rank(x))

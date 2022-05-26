@@ -206,11 +206,9 @@ def generate_permutations(pocket_df):
         for permutation in itertools.product(*args):
 
             permutation = np.concatenate(permutation)
-            print(permutation)
             frag_idxs = []
             ph4_idxs = []
             for coords in permutation:
-                print(coords)
                 # find if coords from donor/acceptor/donor-acceptor (removes error if any same for diff fragments?)
                 # get index of coords in df after determining ph4 type
                 if len(donors) > 0 and np.any(np.all(coords == donors, axis=1)) == True:
