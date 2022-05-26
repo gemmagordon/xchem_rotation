@@ -24,14 +24,13 @@ from rich import print as rprint
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(fragment_files)[:5]
-frag_mols = frag_mols[1:2]
+frag_mols = bf.sdf_to_mol(fragment_files)[:10]
+#frag_mols = frag_mols[1:2]
 
 rprint('NUM FRAGMENTS:', len(frag_mols))
 frag_donor_coords, frag_acceptor_coords = bf.get_coords_fragments(frag_mols)
 frag_donor_coords, frag_acceptor_coords, (donor_idxs, acceptor_idxs) = bf.clean_ph4_points(frag_donor_coords, frag_acceptor_coords)
 
-print(frag_donor_coords)
 ## SET UP QUERY POINTS
 #query_sdfs, query_filenames = bf.get_sdfs('Mpro_query')
 #query_mols = bf.sdf_to_mol(query_sdfs)
@@ -40,7 +39,7 @@ print(frag_donor_coords)
 query_mols = frag_mols 
 
 # get ph4 coords for a single mol
-results = bf.get_coords_query(query_mols[0])
+results = bf.get_coords_query(query_mols[5])
 if results is None:
     raise ValueError('Not valid query. ph4s are coplanar')
 else:
@@ -203,8 +202,7 @@ def generate_permutations(pocket_df):
             args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
 
         args = tuple(args)
-        print(list);input()
-        print(list(itertools.product(*args)))
+
         for permutation in itertools.product(*args):
 
             permutation = np.concatenate(permutation)
