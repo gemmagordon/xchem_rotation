@@ -24,13 +24,12 @@ from rich import print as rprint
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(fragment_files)[:5]
+frag_mols = bf.sdf_to_mol(fragment_files)[:10]
 rprint('NUM FRAGMENTS:', len(frag_mols))
-frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords, \
-    (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs) = bf.get_coords(frag_mols)
+frag_donor_coords, frag_acceptor_coords = bf.get_coords_fragments(frag_mols)
+frag_donor_coords, frag_acceptor_coords, frag_donor_acceptor_coords, \
+        (donor_idxs, acceptor_idxs, donor_acceptor_idxs) = bf.get_ph4_points(frag_donor_coords, frag_acceptor_coords)
 
-
-#bf.plot_coords(frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_acceptor_coords)
 
 ## SET UP QUERY POINTS
 #query_sdfs, query_filenames = bf.get_sdfs('Mpro_query')
@@ -40,28 +39,31 @@ frag_donor_coords, frag_acceptor_coords, frag_aromatic_coords, frag_donor_accept
 query_mols = frag_mols
 
 # get ph4 coords for a single mol
-query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords = bf.get_coords_query(query_mols[0])
+query_donor_coords, query_acceptor_coords = bf.get_coords_query(query_mols[2])
+query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords, (__, __, __) = bf.get_ph4_points(query_donor_coords, query_acceptor_coords)
+
 rprint('num query donors', len(query_donor_coords))
 rprint('num query acceptors', len(query_acceptor_coords))
 rprint('num query don-acc', len(query_donor_acceptor_coords))
 
-# transform points for test
-# query_donor_coords_trans, query_acceptor_coords_trans, query_aromatic_coords_trans, query_donor_acceptor_coords_trans \
-#     = transform_ph4s([query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords], angleX=np.pi, angleY=0.45, angleZ=0,
-#                      translateX=1, translateY=23)
 
-# query_points_trans = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans])
+# transform points for test
+query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans \
+    = transform_ph4s([query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords], angleX=np.pi, angleY=0.45, angleZ=0,
+                      translateX=1, translateY=23)
+
+query_points_trans = np.concatenate([query_donor_coords_trans, query_acceptor_coords_trans, query_donor_acceptor_coords_trans])
 
 concat_list = []
-for item in [query_donor_coords, query_acceptor_coords, query_aromatic_coords, query_donor_acceptor_coords]:
+for item in [query_donor_coords, query_acceptor_coords, query_donor_acceptor_coords]:
     if len(item) > 0:
         concat_list.append(item)
 query_points = np.concatenate(concat_list)
 rprint('NUM QUERY POINTS', len(query_points))
 
-# qm_aligned, rmsd_val = kabsch.align_coords(query_points_trans, query_points)
-# print('RESULT:', rmsd_val)
-# print(qm_aligned)
+qm_aligned, rmsd_val = kabsch.align_coords(query_points_trans, query_points)
+print('RESULT:', rmsd_val)
+print(qm_aligned)
 
 # # Brute force draft
 ### CLUSTER POCKET POINTS 

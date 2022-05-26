@@ -1,3 +1,4 @@
+from concurrent.futures.process import _chain_from_iterable_of_lists
 import os
 from queue import Empty
 import numpy as np
@@ -34,15 +35,14 @@ def get_sdfs(dir_name):
 # ### Convert SDFs to rdkit mol objects
 # get mol object for each sdf file
 def sdf_to_mol(sdf_file_list):
-   
-   mols = []
-   for sdf_file in sdf_file_list:
-    suppl = Chem.SDMolSupplier(sdf_file)
-    for mol in suppl:
-        if mol is None: continue
-        mols.append(mol)
 
-   return mols
+    mols = []
+    for sdf_file in sdf_file_list:
+        suppl = Chem.SDMolSupplier(sdf_file)
+        for mol in suppl:
+            mols.append(mol)
+
+    return mols
 
 
 # ### Extract pharmacophores and their types and coordinates
@@ -56,7 +56,7 @@ def get_features_factory(features_names, resetPharmacophoreFactory=False):
 
     if resetPharmacophoreFactory or (len(_FEATURES_FACTORY) > 0 and _FEATURES_FACTORY[-1] != features_names):
         _FEATURES_FACTORY.pop()
-       # _FEATURES_FACTORY.pop() # NOTE repeated line?
+    # _FEATURES_FACTORY.pop() # NOTE repeated line?
     if len(_FEATURES_FACTORY) == 0:
         feature_factory = AllChem.BuildFeatureFactory(os.path.join(RDConfig.RDDataDir, 'BaseFeatures.fdef'))
         _FEATURES_NAMES = features_names
@@ -88,140 +88,141 @@ def getPharmacophoreCoords(mol, features_names=["Acceptor", "Donor", "Aromatic"]
     return new_feats_dict, idxsDict
 
 
-# compute pharmacophores coordinates
-# NOTE should change just to work for one molecule rather than looping through
-def get_coords(mols):
+def get_coords_fragments(mols):
 
-    donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords = [], [], [], []
-    donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs = [], [], [], []
+    donor_coords = []
+    acceptor_coords = []
 
-    for i, mol in enumerate(mols):
+    for mol in mols:
 
         # .get() will just fill with None if key doesn't exist
         pharma_coords, __ = getPharmacophoreCoords(mol)
-        _donor_coord = pharma_coords.get('Donor')
-        _acceptor_coord = pharma_coords.get('Acceptor')
-        aromatic_coord = pharma_coords.get('Aromatic')
+        donor_coord = pharma_coords.get('Donor')
+        acceptor_coord = pharma_coords.get('Acceptor')
 
-        if _donor_coord is not None and _acceptor_coord is not None:
-            # get common coords from donors and acceptors and add to donor-acceptor group
-            donor_acceptor_coord = [x for x in _donor_coord if x in _acceptor_coord]
-            # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
-            donor_coord = [x for x in _donor_coord if x not in _acceptor_coord]
-            acceptor_coord = [x for x in _acceptor_coord if x not in _donor_coord]
+        donor_coords.append(donor_coord)
+        acceptor_coords.append(acceptor_coord)
 
-            donor_acceptor_coords.append(np.array(donor_acceptor_coord))
-            donor_coords.append(np.array(donor_coord))
-            acceptor_coords.append(np.array(acceptor_coord))
-
-    # remove None values
-    _donor_coords = []
-    for i, x in enumerate(donor_coords):
-        if x is not None:
-            _donor_coords.append( x )
-            donor_idxs += [i] * len(x)
-    donor_coords = _donor_coords
-
-    _acceptor_coords = []
-    for i, x in enumerate(acceptor_coords):
-        if x is not None:
-            _acceptor_coords.append( x )
-            acceptor_idxs += [i] * len(x)
-    acceptor_coords = _acceptor_coords
-
-    _donor_acceptor_coords = []
-    for i, x in enumerate(donor_acceptor_coords):
-        if x is not None:
-            _donor_acceptor_coords.append( x )
-            donor_acceptor_idxs += [i] * len(x)
-    donor_acceptor_coords = _donor_acceptor_coords
-
-    _aromatic_coords = []
-    for i, x in enumerate(aromatic_coords):
-        if x is not None:
-            _aromatic_coords.append( x )
-            aromatic_idxs += [i] * len(x)
-    aromatic_coords = _aromatic_coords
-
-    if len(donor_coords) == 0:
-        donor_coords = np.array(donor_coords).reshape(-1,3)
-    else:
-        donor_coords = [x for x in donor_coords if len(x)!= 0]
-        donor_coords = np.concatenate(donor_coords)
-        donor_idxs = np.array(donor_idxs)
-
-    if len(acceptor_coords) == 0:
-        acceptor_coords = np.array(acceptor_coords).reshape(-1,3)
-    else:
-        acceptor_coords = [x for x in acceptor_coords if len(x)!= 0]
-        acceptor_coords = np.concatenate(acceptor_coords)
-        acceptor_idxs = np.array(acceptor_idxs)
-
-    if len(donor_acceptor_coords) == 0:
-        donor_acceptor_coords = np.array(donor_acceptor_coords).reshape(-1,3)
-    else:
-        donor_acceptor_coords = [x for x in donor_acceptor_coords if len(x)!= 0]
-        donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
-        donor_acceptor_idxs = np.array(donor_acceptor_idxs)
-
-    if len(aromatic_coords) == 0:
-        aromatic_coords = np.array(aromatic_coords).reshape(-1,3)
-    else:
-        aromatic_coords = [x for x in aromatic_coords if len(x)!= 0]
-        aromatic_coords = np.concatenate(aromatic_coords)
-        aromatic_idxs = np.array(aromatic_idxs)
-
-    return donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords, (donor_idxs, acceptor_idxs, aromatic_idxs, donor_acceptor_idxs)
+    return donor_coords, acceptor_coords
 
 
 def get_coords_query(mol):
 
     # .get() will just fill with None if key doesn't exist
     pharma_coords, __ = getPharmacophoreCoords(mol)
-    _donor_coords = pharma_coords.get('Donor')
-    _acceptor_coords = pharma_coords.get('Acceptor')
-    aromatic_coords = pharma_coords.get('Aromatic')
+    donor_coords = pharma_coords.get('Donor')
+    acceptor_coords = pharma_coords.get('Acceptor')
 
-    # get common coords from donors and acceptors and add to donor-acceptor group
-    if _donor_coords is not None and _acceptor_coords is not None:
-        donor_acceptor_coords = [i for i in _donor_coords if i in _acceptor_coords]
-        if len(donor_acceptor_coords) > 0:
-            donor_acceptor_coords = np.concatenate(donor_acceptor_coords)
-        # reduce donor and acceptor coords to only unique values (ie not donor-acceptors)
-        donor_coords = [i for i in _donor_coords if i not in _acceptor_coords]
-        acceptor_coords = [i for i in _acceptor_coords if i not in _donor_coords]
+    return donor_coords, acceptor_coords
 
-        # remove None values
-        if donor_coords is not None:
-            donor_coords = [x for x in donor_coords if x is not None]
-            donor_coords = np.concatenate([donor_coords])
-        else:
-            donor_coords = np.array([]).reshape(-1,3)
+
+def get_ph4_points(donor_coords, acceptor_coords):
+
+    donor_idxs, acceptor_idxs, donor_acceptor_idxs = [], [], []
+
+    # REMOVE NONE VALUES HERE otherwise messes up coords later
+    donor_coords = [d for d in donor_coords if d is not None]
+    acceptor_coords = [a for a in acceptor_coords if a is not None]
+
+    # GET ID for donor, acceptor, aromatic
+    for i, x in enumerate(donor_coords):
+        donor_idxs += [i] * len(x)
+
+    for i, x in enumerate(acceptor_coords):
+        acceptor_idxs += [i] * len(x)
+    
+    # put coords/idxs in right format
+    _donor_coords, _donor_idxs = format_coords(donor_coords, donor_idxs)
+    _acceptor_coords, _acceptor_idxs = format_coords(acceptor_coords, acceptor_idxs)
+
+    if len(_donor_coords) > 0 and len(_acceptor_coords) > 0:
+        #np.isclose(a,b, atol=0.01)
+        # get common coords from donors and acceptors and add to donor-acceptor group
+        donor_acceptor_coords = multidim_intersect(_donor_coords, _acceptor_coords)
+        # reduce donor and acceptor points to those that don't appear in donor_acceptor group
+        donor_coords = multidim_unique(_donor_coords, donor_acceptor_coords)
+        acceptor_coords = multidim_unique(_acceptor_coords, donor_acceptor_coords)
         
-        if acceptor_coords is not None:
-            acceptor_coords = [x for x in acceptor_coords if x is not None]
-            acceptor_coords = np.concatenate([acceptor_coords])
-        else:
-            acceptor_coords = np.array([]).reshape(-1, 3)
-        
-        if donor_acceptor_coords is not None:
-            donor_acceptor_coords = [x for x in donor_acceptor_coords if x is not None]
-            donor_acceptor_coords = np.concatenate([donor_acceptor_coords]).reshape(-1,3)
-        else:
-            donor_acceptor_coords = np.array([]).reshape(-1, 3)
+        # get updated idxs
+        donor_idxs = []
+        acceptor_idxs = []
+        donor_acceptor_idxs = []
+
+        # for dc in _donor_coords: 
+        for i, dc in enumerate(_donor_coords):
+            # if in donor_coords:
+            if dc in donor_coords:
+                # get index of _donor_coords
+                donor_idxs.append(_donor_idxs[i])
+
+        for i, ac in enumerate(_acceptor_coords):
+            if ac in acceptor_coords:
+                acceptor_idxs.append(_acceptor_idxs[i])
 
 
-    if aromatic_coords is not None:
-        aromatic_coords = [x for x in aromatic_coords if x is not None]
-        aromatic_coords = np.concatenate([aromatic_coords])
+        # NOTE filler for now until fix getting D-A idxs:
+        donor_acceptor_idxs = np.arange(0, len(donor_acceptor_coords), 1)
+
+    else: 
+        donor_acceptor_coords = np.array([])
+        donor_acceptor_idxs = []
+        donor_coords = _donor_coords
+        acceptor_coords = _acceptor_coords
+        donor_idxs = _donor_idxs
+        acceptor_idxs = _acceptor_idxs
+
+    # NOTE checking with intersect/np.unique shows no common coords
+    # add all the relevant IDs to the one array left
+    #print(len(acceptor_coords))
+    #print(len(multidim_intersect(donor_coords, acceptor_coords)))
+
+    return donor_coords, acceptor_coords, donor_acceptor_coords, (donor_idxs, acceptor_idxs, donor_acceptor_idxs)
+
+
+def get_unique(arr):
+
+    '''check for duplicates within a 2d array'''
+
+    arr_view = arr.view([('',arr.dtype)]*arr.shape[1])
+    unique = np.unique(arr_view)
+    
+    return unique.view(arr.dtype).reshape(-1, arr.shape[1])
+
+
+def multidim_intersect(arr1, arr2): # https://stackoverflow.com/questions/9269681/intersection-of-2d-numpy-ndarrays
+
+    '''return common arrays between 2d arrays arr1 and arr2'''
+
+    arr1_view = arr1.view([('',arr1.dtype)]*arr1.shape[1])
+    arr2_view = arr2.view([('',arr2.dtype)]*arr2.shape[1])
+    intersected = np.intersect1d(arr1_view, arr2_view)
+    
+    return intersected.view(arr1.dtype).reshape(-1, arr1.shape[1])
+
+
+def multidim_unique(arr1, arr2): 
+
+    '''return arrays in 2d array arr1 that are not in 2d array arr2'''
+
+    arr1_view = arr1.view([('',arr1.dtype)]*arr1.shape[1])
+    arr2_view = arr2.view([('',arr2.dtype)]*arr2.shape[1])
+    unique = np.setdiff1d(arr1_view, arr2_view)
+    
+    return unique.view(arr1.dtype).reshape(-1, arr1.shape[1])
+
+
+def format_coords(coords, idxs):
+
+    if len(coords) == 0:
+        coords = np.array(coords).reshape(-1,3)
     else:
-        aromatic_coords = np.array([]).reshape(-1, 3)
+        coords = [x for x in coords if len(x)!= 0]
+        coords += [np.ones((0,3))]
+        coords = np.vstack(coords).reshape(-1,3)
+        idxs = np.array(idxs)
 
+    return coords, idxs
 
-    return donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords
-
-
-# ### Setting up fragment point cloud
 
 def plot_coords(donor_coords, acceptor_coords, aromatic_coords, donor_acceptor_coords):
     
