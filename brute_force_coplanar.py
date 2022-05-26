@@ -24,6 +24,7 @@ from rich import print as rprint
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
+fragment_files = sorted(fragment_files)
 frag_mols = bf.sdf_to_mol(fragment_files)[:10]
 #frag_mols = frag_mols[1:2]
 
@@ -192,20 +193,20 @@ def generate_permutations(pocket_df):
 
     # get possible combinations/permutations within subpocket, restricted by type/numbers of different ph4s in query molecule
     # e.g. first query mol has 4 donors, 1 acceptor, so from frag donor points choose 4, from acceptor points choose 1 (and then get permutations for different correspondences)
-
+        donors = np.array(donors)
+        acceptors = np.array(acceptors)
         n_query_acceptors = len(query_acceptor_coords)
         n_query_donors = len(query_donor_coords)
         args = []
         if n_query_donors:
-            args.append(itertools.permutations(donors, len(query_donor_coords)))
+            args.append(itertools.permutations(np.arange(len(donors)), len(query_donor_coords)))
         if n_query_acceptors:
-            args.append(itertools.permutations(acceptors, len(query_acceptor_coords)))
+            args.append(itertools.permutations(np.arange(len(acceptors)), len(query_acceptor_coords)))
 
         args = tuple(args)
 
-        for permutation in itertools.product(*args):
-
-            permutation = np.concatenate(permutation)
+        for permutationDonorIdxs, permutationAcceptorIndx in itertools.product(*args):
+            permutation = np.concatenate( [donors[list(permutationDonorIdxs),:], acceptors[list(permutationAcceptorIndx),:]])
             frag_idxs = []
             ph4_idxs = []
             for coords in permutation:
