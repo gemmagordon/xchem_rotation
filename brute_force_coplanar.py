@@ -24,13 +24,14 @@ from rich import print as rprint
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(fragment_files)[:10]
+frag_mols = bf.sdf_to_mol(fragment_files)[:5]
 #frag_mols = frag_mols[1:2]
 
 rprint('NUM FRAGMENTS:', len(frag_mols))
 frag_donor_coords, frag_acceptor_coords = bf.get_coords_fragments(frag_mols)
 frag_donor_coords, frag_acceptor_coords, (donor_idxs, acceptor_idxs) = bf.clean_ph4_points(frag_donor_coords, frag_acceptor_coords)
 
+print(len(frag_donor_coords) + len(frag_acceptor_coords))
 ## SET UP QUERY POINTS
 #query_sdfs, query_filenames = bf.get_sdfs('Mpro_query')
 #query_mols = bf.sdf_to_mol(query_sdfs)
@@ -39,7 +40,7 @@ frag_donor_coords, frag_acceptor_coords, (donor_idxs, acceptor_idxs) = bf.clean_
 query_mols = frag_mols 
 
 # get ph4 coords for a single mol
-results = bf.get_coords_query(query_mols[5])
+results = bf.get_coords_query(query_mols[0])
 if results is None:
     raise ValueError('Not valid query. ph4s are coplanar')
 else:

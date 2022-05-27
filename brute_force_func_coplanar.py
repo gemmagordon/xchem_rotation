@@ -153,6 +153,7 @@ def clean_ph4_points(donor_coords, acceptor_coords):
         # reduce donor and acceptor points to those that don't appear in donor_acceptor group
         donor_coords = multidim_unique(_donor_coords, _acceptor_coords)
         acceptor_coords = multidim_unique(_acceptor_coords, _donor_coords)
+        # NOTE losing points here if duplicated? So some mapping tests are bad/not 0
         # get updated idxs
         donor_idxs = []
         acceptor_idxs = []
