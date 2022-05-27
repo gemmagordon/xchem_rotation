@@ -239,7 +239,6 @@ rmsd_vals = []
 qm_aligned_all = []
 
 results = Parallel(n_jobs=2)(delayed(kabsch.align_coords)(query_points=query_points, ref_points=permutation) for permutation, ph4_idxs, frag_idxs in ph4_permutations)
-print(results)
 
 for result in results:
     qm_aligned_all.append(result[0])
