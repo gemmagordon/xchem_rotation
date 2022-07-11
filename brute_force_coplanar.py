@@ -20,27 +20,38 @@ from joblib import Parallel, delayed
 import brute_force_func_coplanar as bf
 import rich
 from rich import print as rprint
+from rdkit.Chem import Draw
+
 
 ### SET UP POCKET POINTS
 # get pocket fragments
 fragment_files, frag_filenames = bf.get_sdfs('Mpro_fragments')
-frag_mols = bf.sdf_to_mol(fragment_files)[:5]
+frag_mols = bf.sdf_to_mol(fragment_files)
 #frag_mols = frag_mols[1:2]
 
-rprint('NUM FRAGMENTS:', len(frag_mols))
+rprint(fragment_files[5])
+rprint('NUM FRAGMENTS:', len(list(frag_mols)))
 frag_donor_coords, frag_acceptor_coords = bf.get_coords_fragments(frag_mols)
 frag_donor_coords, frag_acceptor_coords, (donor_idxs, acceptor_idxs) = bf.clean_ph4_points(frag_donor_coords, frag_acceptor_coords)
 
-print(len(frag_donor_coords) + len(frag_acceptor_coords))
 ## SET UP QUERY POINTS
 #query_sdfs, query_filenames = bf.get_sdfs('Mpro_query')
 #query_mols = bf.sdf_to_mol(query_sdfs)
 
-# NOTE while testing - use pocket fragments as query mols
+# NOTE while testing - use pocket fragments as query mols 
+# # NOTE CONFORMER TESTS query_mols = conformers of one fragment (x540)
 query_mols = frag_mols 
+# query_mols = []
+# query_mols.append(frag_mols[0]) # add experimental conformer to list of query conformers
+
+# suppl = Chem.SDMolSupplier('x540_50_confs.sdf')
+# for x in suppl: # using 50 conformers
+#     query_mols.append(x)
+
+
 
 # get ph4 coords for a single mol
-results = bf.get_coords_query(query_mols[0])
+results = bf.get_coords_query(query_mols[5])
 if results is None:
     raise ValueError('Not valid query. ph4s are coplanar')
 else:
@@ -50,6 +61,27 @@ query_donor_coords, query_acceptor_coords, (q_do_idxs, q_ac_idxs) = bf.clean_ph4
 
 rprint('num query donors', len(query_donor_coords))
 rprint('num query acceptors', len(query_acceptor_coords))
+
+# PLOT FOR RESULTS
+# all coords of fragment (not just ph4s)
+# query_mol_coords = query_mols[0].GetConformer().GetPositions()
+
+# plot mol vs ph4s
+# fig = plt.figure(figsize=(7,7))
+# ax = plt.axes(projection='3d')
+# ax.scatter3D(query_mol_coords[:,0], query_mol_coords[:,1], query_mol_coords[:,2], alpha=0.5, c='b', label='Query all points')
+# ax.scatter3D(query_donor_coords[:,0], query_donor_coords[:,1], query_donor_coords[:,2], label='Query donors', alpha=0.5, c='r', s=50)
+# plt.legend(loc='upper right')
+# plt.savefig('example_ph4_mol.png')
+
+# # PLOT query vs fragment cloud
+# fig = plt.figure(figsize=(7,7))
+# ax = plt.axes(projection='3d')
+# ax.scatter3D(query_donor_coords[:,0], query_donor_coords[:,1], query_donor_coords[:,2], label='Query donor', alpha=0.5, c='r', s=50)
+# ax.scatter3D(frag_donor_coords[:,0], frag_donor_coords[:,1], frag_donor_coords[:,2], label='Fragment donor', alpha=0.5, c='b' )
+# ax.scatter3D(frag_acceptor_coords[:,0],frag_acceptor_coords[:,1], frag_acceptor_coords[:,2], label='Fragment acceptor', alpha=0.5, c='g')
+# plt.legend(loc='upper right')
+# plt.savefig('compare_query_frag_cloud.png')
 
 # transform points for test
 query_donor_coords_trans, query_acceptor_coords_trans, \
@@ -93,7 +125,7 @@ def cluster(data, distance_threshold):
 
 donor_df = bf.create_ph4_df(frag_donor_coords, donor_idxs)
 acceptor_df = bf.create_ph4_df(frag_acceptor_coords, acceptor_idxs)
-
+rprint(acceptor_df.columns)
 
 # Find centroids of clusters: 
 def get_centroids(ph4_df):
@@ -118,6 +150,7 @@ def create_centroid_df(ph4_df):
     centroid_df = pd.DataFrame([centroids[:,0], centroids[:,1], centroids[:,2]]) # no cluster labels
     centroid_df = centroid_df.transpose()
     centroid_df.columns = ['x', 'y', 'z']
+    centroid_df['ID'] = ph4_df['ID']
 
     return centroid_df
 
@@ -130,8 +163,9 @@ acceptor_centroid_df = create_centroid_df(acceptor_df)
 # NOTE need to make this into function/more flexible
 
 # NOTE for test removing centroids at first to see if works with exact points; should be RMSD=0 
-donor_centroid_df = donor_df 
-acceptor_centroid_df = acceptor_df
+# REMOVED NO CENTROIDS
+# donor_centroid_df = donor_df 
+# acceptor_centroid_df = acceptor_df
 
 rprint('check donor_df length', len(donor_centroid_df))
 rprint('check acc df length', len(acceptor_centroid_df))
@@ -145,7 +179,7 @@ rprint('check pocket_df length', len(pocket_df))
 def filter_by_dist(query_points, pocket_df):
     # get max distance for pairwise points of query molecule
     # print(query_points.shape)
-    assert query_points.shape[0] > 2, 'Error, to few points'
+    assert query_points.shape[0] > 2, 'Error, too few points'
     pdist_q = scipy.spatial.distance.pdist(query_points, metric='euclidean')
     # print(pdist_q)
     max_query_dist = np.max(pdist_q)
